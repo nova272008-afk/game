@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Orbit Switch</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#14123a;--bg2:#221d5c;--ink:#edebff;--mute:#9a95d6;--teal:#3ee8c8;--coral:#ff6b8a;--gold:#ffd166;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14123a}}
+:root[data-theme="dark"]{--bg:#14123a}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:radial-gradient(circle at 50% 40%,var(--bg2),var(--bg) 70%);color:var(--ink);font-family:"Space Grotesk",system-ui,sans-serif;touch-action:manipulation;user-select:none}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.hud{position:absolute;top:calc(env(safe-area-inset-top,0px) + 14px);left:0;right:0;display:flex;justify-content:space-between;padding:0 20px;pointer-events:none}
+.hud b{font-size:clamp(28px,6vw,44px);font-weight:700;line-height:1}
+.hud span{display:block;font-size:13px;color:var(--mute);margin-top:4px}
+.hud div:last-child{text-align:right}
+.panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;background:rgba(20,18,58,.72);backdrop-filter:blur(6px);transition:opacity .25s}
+.panel.hide{opacity:0;pointer-events:none}
+h1{font-size:clamp(40px,10vw,76px);line-height:1;letter-spacing:-.03em}
+h1 em{font-style:normal;color:var(--teal)}
+p{color:var(--mute);max-width:34ch;line-height:1.5}
+.legend{display:flex;gap:18px;font-size:14px;color:var(--ink);flex-wrap:wrap;justify-content:center}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+button{font:inherit;font-weight:700;font-size:18px;padding:14px 38px;border:0;border-radius:999px;background:var(--teal);color:#06231d;cursor:pointer;transition:transform .12s}
+button:active{transform:scale(.95)}
+button:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud"><div><b id="sc">0</b><span>Skor</span></div><div><b id="bs">0</b><span>Rekor</span></div></div>
+<div class="panel" id="panel">
+  <h1>Orbit <em>Switch</em></h1>
+  <p id="msg">Ketuk layar atau tekan Spasi untuk pindah jalur. Hindari blok merah, kumpulkan bintang emas.</p>
+  <div class="legend"><span><i style="background:var(--teal)"></i>Kamu</span><span><i style="background:var(--coral)"></i>Bahaya</span><span><i style="background:var(--gold)"></i>+5 poin</span></div>
+  <button id="go">Main</button>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+let W,H,cx,cy,R1,R2,dpr;
+function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);cx=W/2;cy=H/2;const m=Math.min(W,H);R1=m*.26;R2=m*.4}
+addEventListener('resize',resize);resize();
+let best=0;try{best=+localStorage.getItem('orbit-best')||0}catch(e){}
+$('bs').textContent=best;
+const TAU=Math.PI*2;
+let S,running=false,last=0,shake=0,parts=[];
+function reset(){S={a:-Math.PI/2,lane:1,r:R2,score:0,t:0,spawn:0,obs:[],orbs:[],trail:[],orbT:1.5}}
+reset();
+const diff=(a,b)=>{let d=(a-b)%TAU;if(d>Math.PI)d-=TAU;if(d<-Math.PI)d+=TAU;return Math.abs(d)};
+function burst(x,y,col,n){for(let i=0;i<n;i++){const an=Math.random()*TAU,sp=60+Math.random()*180;parts.push({x,y,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp,l:1,col})}}
+function flip(){if(!running)return;S.lane^=1}
+function start(){reset();running=true;$('panel').classList.add('hide');$('sc').textContent=0;last=performance.now()}
+function over(){running=false;shake=.5;const x=cx+Math.cos(S.a)*S.r,y=cy+Math.sin(S.a)*S.r;burst(x,y,'#3ee8c8',40);
+  const sc=Math.floor(S.score);let nb=sc>best;if(nb){best=sc;try{localStorage.setItem('orbit-best',best)}catch(e){}}
+  $('bs').textContent=best;$('msg').textContent=nb?`Rekor baru: ${sc} poin! Bisa lebih tinggi lagi?`:`Skor kamu ${sc}. Rekor ${best}. Coba lagi.`;
+  $('go').textContent='Main lagi';setTimeout(()=>$('panel').classList.remove('hide'),650)}
+function update(dt){
+  S.t+=dt;const lvl=Math.min(S.t/45,1);
+  S.a+=(1.7+lvl*1.3)*dt;
+  const tr=S.lane?R2:R1;S.r+=(tr-S.r)*Math.min(1,dt*14);
+  S.score+=dt*2;
+  S.trail.push({a:S.a,r:S.r,l:1});if(S.trail.length>26)S.trail.shift();
+  S.spawn-=dt;
+  if(S.spawn<=0){S.spawn=1.25-lvl*.65;
+    let an,k=0;do{an=Math.random()*TAU;k++}while(diff(an,S.a)<1.4&&k<20);
+    S.obs.push({a:an,lane:Math.random()<.5?0:1,w:.38+Math.random()*.4,v:(Math.random()<.5?-1:1)*(.3+Math.random()*.5+lvl*.4),age:0,life:9})}
+  S.orbT-=dt;
+  if(S.orbT<=0){S.orbT=2.2+Math.random()*1.5;S.orbs.push({a:S.a+1.2+Math.random()*2,lane:Math.random()<.5?0:1})}
+  const pr=Math.min(W,H)*.018;
+  for(const o of S.obs){o.age+=dt;o.a+=o.v*dt;
+    if(o.age>.7){const rr=o.lane?R2:R1;if(Math.abs(S.r-rr)<pr*2.2&&diff(o.a,S.a)<o.w/2+pr/rr){over();return}}}
+  S.obs=S.obs.filter(o=>o.age<o.life);
+  for(let i=S.orbs.length-1;i>=0;i--){const o=S.orbs[i],rr=o.lane?R2:R1;
+    if(Math.abs(S.r-rr)<pr*2.5&&diff(o.a,S.a)<.16){S.score+=5;burst(cx+Math.cos(o.a)*rr,cy+Math.sin(o.a)*rr,'#ffd166',14);S.orbs.splice(i,1)}}
+  $('sc').textContent=Math.floor(S.score)}
+function draw(dt){
+  ctx.clearRect(0,0,W,H);ctx.save();
+  if(shake>0){shake-=dt;ctx.translate((Math.random()-.5)*14*shake*2,(Math.random()-.5)*14*shake*2)}
+  ctx.lineWidth=2;ctx.strokeStyle='rgba(154,149,214,.28)';
+  for(const r of[R1,R2]){ctx.beginPath();ctx.arc(cx,cy,r,0,TAU);ctx.stroke()}
+  const pr=Math.min(W,H)*.018,ow=Math.min(W,H)*.03;
+  for(const o of S.obs){const rr=o.lane?R2:R1,al=Math.min(1,o.age/.7);
+    ctx.globalAlpha=o.age<.7?.35+.3*Math.sin(o.age*30):1;ctx.strokeStyle='#ff6b8a';ctx.lineWidth=ow;ctx.lineCap='round';
+    ctx.shadowColor='#ff6b8a';ctx.shadowBlur=14*al;ctx.beginPath();ctx.arc(cx,cy,rr,o.a-o.w/2,o.a+o.w/2);ctx.stroke()}
+  ctx.globalAlpha=1;ctx.shadowBlur=0;
+  for(const o of S.orbs){const rr=o.lane?R2:R1,x=cx+Math.cos(o.a)*rr,y=cy+Math.sin(o.a)*rr,p=1+.2*Math.sin(performance.now()/180);
+    ctx.fillStyle='#ffd166';ctx.shadowColor='#ffd166';ctx.shadowBlur=16;ctx.beginPath();
+    for(let i=0;i<10;i++){const rad=(i%2?pr*.55:pr*1.2)*p,an=i*Math.PI/5-Math.PI/2;ctx.lineTo(x+Math.cos(an)*rad,y+Math.sin(an)*rad)}ctx.closePath();ctx.fill()}
+  ctx.shadowBlur=0;
+  if(running||shake>0){
+    S.trail.forEach((p,i)=>{const f=i/S.trail.length;ctx.fillStyle=`rgba(62,232,200,${f*.35})`;ctx.beginPath();ctx.arc(cx+Math.cos(p.a)*p.r,cy+Math.sin(p.a)*p.r,pr*f,0,TAU);ctx.fill()});
+    if(running){ctx.fillStyle='#3ee8c8';ctx.shadowColor='#3ee8c8';ctx.shadowBlur=20;ctx.beginPath();ctx.arc(cx+Math.cos(S.a)*S.r,cy+Math.sin(S.a)*S.r,pr,0,TAU);ctx.fill();ctx.shadowBlur=0}}
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.l-=dt*1.6;if(p.l<=0){parts.splice(i,1);continue}
+    ctx.globalAlpha=p.l;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,3,0,TAU);ctx.fill()}
+  ctx.restore();ctx.globalAlpha=1}
+function loop(now){const dt=Math.min((now-last)/1000||0,.05);last=now;if(running)update(dt);draw(dt);requestAnimationFrame(loop)}
+requestAnimationFrame(t=>{last=t;loop(t)});
+$('go').addEventListener('click',e=>{e.stopPropagation();start()});
+addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;flip()});
+addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='ArrowUp'||e.code==='ArrowDown'){e.preventDefault();if(running)flip();else if(!$('panel').classList.contains('hide')&&e.code==='Space')start()}});
+</script>
+</body>
+</html>
